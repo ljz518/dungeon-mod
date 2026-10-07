@@ -16,31 +16,33 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Grant execute permission
+      - name: Install system Gradle
+        run: apt update && apt install -y gradle
+
+      # 全局gradle生成wrapper，不需要项目自带wrapper.jar
+      - name: Generate wrapper
+        run: gradle wrapper --gradle-version=8.14.3
+
+      - name: chmod gradlew
         run: chmod +x gradlew
 
-      # 云端直接生成wrapper，不需要本地有gradle/wrapper
-      - name: Generate Gradle Wrapper
-        run: ./gradlew wrapper --gradle-version=8.14.3
-
-      # 国内镜像加速
-      - name: Mirror config
+      # 阿里云Maven镜像
+      - name: Gradle mirror
         run: |
           mkdir -p ~/.gradle
           cat > ~/.gradle/init.gradle <<'EOF'
-          allprojects {
-              repositories {
-                  maven { url 'https://maven.aliyun.com/repository/public' }
-                  maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
-                  mavenCentral()
-              }
-          }
-          EOF
+allprojects {
+    repositories {
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        mavenCentral()
+    }
+}
+EOF
 
-      - name: Run genSources
+      - name: genSources
         run: ./gradlew genSources
 
-      - name: Build Jar
+      - name: build jar
         run: ./gradlew jar
 
       - name: Upload artifact
