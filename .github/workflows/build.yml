@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  gen-wrapper:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -22,13 +22,43 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Install Gradle (CI全局)
+      - name: Install Gradle 8.8
         uses: gradle/actions/setup-gradle@v3
         with:
-          gradle-version: '8.1.1'
+          gradle-version: '8.8'
 
-      - name: Generate Gradle Wrapper on CI
-        run: gradle wrapper --gradle-version=8.1.1
+      - name: Generate Wrapper
+        run: gradle wrapper --gradle-version=8.8
+
+      - name: Archive generated project
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-with-wrapper
+          path: ./
+
+  build-mod:
+    needs: gen-wrapper
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download project with wrapper
+        uses: actions/download-artifact@v4
+        with:
+          name: project-with-wrapper
+          path: ./
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
 
       - name: Build
         run: ./gradlew build --stacktrace
@@ -43,3 +73,4 @@ jobs:
         with:
           name: ModJar
           path: build/libs/*.jar
+
