@@ -23,14 +23,13 @@ jobs:
 
       - name: 生成Gradle全局镜像脚本（不修改build.gradle）
         run: |
+          mkdir -p ~/.gradle
           cat > ~/.gradle/init.gradle <<'EOF'
           allprojects {
               repositories {
                   def aliyunPublic = maven { url "https://maven.aliyun.com/repository/public" }
                   def aliyunPlugin = maven { url "https://maven.aliyun.com/repository/gradle-plugin" }
                   def neoMaven = maven { url "https://maven.neoforged.net" }
-                  mavenCentral()
-                  // 把阿里云放最前面优先访问
                   removeAll(repositories)
                   repositories {
                       aliyunPublic
@@ -65,5 +64,3 @@ jobs:
         with:
           name: Dungeon-Mod
           path: build/libs/*.jar
-
-
