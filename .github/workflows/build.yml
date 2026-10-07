@@ -16,11 +16,15 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # 关键修复：给gradlew添加执行权限，解决exit code126
-      - name: Grant execute permission for gradlew
+      - name: Grant execute permission
         run: chmod +x gradlew
 
-      - name: 写入gradle国内镜像配置
+      # 云端直接生成wrapper，不需要本地有gradle/wrapper
+      - name: Generate Gradle Wrapper
+        run: ./gradlew wrapper --gradle-version=8.14.3
+
+      # 国内镜像加速
+      - name: Mirror config
         run: |
           mkdir -p ~/.gradle
           cat > ~/.gradle/init.gradle <<'EOF'
@@ -28,8 +32,6 @@ jobs:
               repositories {
                   maven { url 'https://maven.aliyun.com/repository/public' }
                   maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
-                  maven { url 'https://maven.aliyun.com/repository/minecraft' }
-                  maven { url 'https://maven.aliyun.com/repository/forge' }
                   mavenCentral()
               }
           }
@@ -38,10 +40,10 @@ jobs:
       - name: Run genSources
         run: ./gradlew genSources
 
-      - name: Package Mod Jar
+      - name: Build Jar
         run: ./gradlew jar
 
-      - name: Upload Jar Artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ModJar
