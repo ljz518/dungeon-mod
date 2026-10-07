@@ -1,0 +1,571 @@
+import proguard.gradle.ProGuardTask
+
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.guardsquare:proguard-gradle:7.7.0'
+    }
+}
+
+plugins {
+    id 'java'
+    id 'idea'
+    id 'java-library'
+    id 'maven-publish'
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
+    id 'net.neoforged.moddev.legacyforge' version '2.0.103'
+}
+
+// ===================== 基础配置 =====================
+def enableProguard = project.hasProperty("enableProguard") && project.enableProguard.toBoolean()
+
+tasks.named('wrapper', Wrapper).configure {
+    distributionType = Wrapper.DistributionType.BIN
+}
+
+group = mod_group_id
+version = "${minecraft_version}-${mod_version}"
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(17)
+}
+
+base {
+    archivesName = mod_id
+}
+
+println "Java: ${System.getProperty 'java.version'}, JVM: ${System.getProperty 'java.vm.version'} (${System.getProperty 'java.vendor'}), Arch: ${System.getProperty 'os.arch'}"
+
+// ===================== 仓库配置 =====================
+repositories {
+    mavenCentral()
+    maven { url = "https://libraries.minecraft.net/" }
+    maven { url = "https://neoforged.forgecdn.net/releases" }
+    maven { url = "https://neoforged.forgecdn.net/mojang-meta" }
+
+    maven {
+        url "https://cursemaven.com"
+        content { includeGroup "curse.maven" }
+    }
+    maven {
+        name = "Progwml6"
+        url = "https://dvs1.progwml6.com/files/maven/"
+    }
+    maven {
+        name = "BlameJared"
+        url = "https://maven.blamejared.com/"
+    }
+    maven {
+        name = "ModMaven"
+        url = "https://modmaven.dev"
+    }
+    maven {
+        name = "Lucko"
+        url = "https://repo.lucko.me/"
+        content { includeModule 'me.lucko', 'spark-api' }
+    }
+    maven {
+        name = "KosmX"
+        url = "https://maven.kosmx.dev/"
+    }
+    maven {
+        name = "Curios"
+        url = "https://maven.theillusivec4.top/"
+    }
+    maven {
+        name = "GeckoLib"
+        url = "https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/"
+        content {
+            includeGroupByRegex("software\\.bernie.*")
+            includeGroup("com.eliotlash.mclib")
+        }
+    }
+    maven {
+        name = "TerraformersMC"
+        url = "https://maven.terraformersmc.com/"
+    }
+    maven {
+        name = "LTD Maven"
+        url = "https://nexus.bot.leisuretimedock.top/repository/maven-public/"
+    }
+    flatDir { dir "libs" }
+}
+
+// ===================== Forge 配置 =====================
+legacyForge {
+    version = "${minecraft_version}-${forge_version}"
+
+    parchment {
+        minecraftVersion = parchment_minecraft_version
+        mappingsVersion = parchment_mappings_version
+    }
+    validateAccessTransformers = true
+    accessTransformers = ["src/main/templates/META-INF/accesstransformer.cfg"]
+    runs {
+        configureEach {
+            systemProperty 'forge.logging.console.level', 'debug'
+            systemProperty 'forge.logging.markers', 'REGISTRIES'
+            logLevel = org.slf4j.event.Level.DEBUG
+        }
+        client {
+            client()
+            systemProperty 'forge.enabledGameTestNamespaces', mod_id
+        }
+        clientAuth {
+            devLogin = true
+            client()
+            systemProperty 'forge.enabledGameTestNamespaces', mod_id
+        }
+        server {
+            server()
+        }
+        data {
+            data()
+            programArguments.addAll '--mod', mod_id, '--all',
+                    '--output', file('src/generated/resources/').absolutePath,
+                    '--existing', file('src/main/resources/').absolutePath
+        }
+        gameTestServer {
+            type = "gameTestServer"
+            systemProperty 'forge.enabledGameTestNamespaces', project.mod_id
+        }
+
+    }
+
+    mods {
+        "${mod_id}" {
+            sourceSet sourceSets.main
+        }
+    }
+}
+
+// ===================== 源码与资源 =====================
+sourceSets.main.resources {
+    srcDir 'src/generated/resources'
+    srcDir 'src/main/resources'
+}
+
+// ===================== 编译配置 =====================
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+// ===================== 依赖 =====================
+configurations {
+    runtimeClasspath.extendsFrom localRuntime
+    proguardLibs {
+        canBeResolved = true
+        canBeConsumed = false
+        extendsFrom modCompileOnly
+    }
+}
+// 定义区分客户端、服务器和运行数据的辅助方法
+void onlyInClient(Runnable action) {
+    // 检查是否是客户端运行
+    if (!gradle.startParameter.taskNames.any { it.contains("runServer") || it.contains("runGameTestServer") || it.contains("runData") }) {
+        action.run()
+    }
+}
+
+void onlyInServer(Runnable action) {
+    // 检查是否是服务器运行
+    if (gradle.startParameter.taskNames.any { it.contains("runServer") || it.contains("runGameTestServer")}) {
+        action.run()
+    }
+}
+
+void onlyInData(Runnable action) {
+    // 检查是否是数据生成运行
+    if (gradle.startParameter.taskNames.any { it.contains("runData")}) {
+        action.run()
+    }
+}
+
+dependencies {
+    modCompileOnly("blank:freecam-1.20.1:1.2.1")
+    modCompileOnly("curse.maven:real-camera-851574:7082366")
+    modCompileOnly("blank:firstperson-1.20.1:2.6.2")
+    onlyInClient {
+        modRuntimeOnly("blank:firstperson-1.20.1:2.6.2")
+        modRuntimeOnly("blank:freecam-1.20.1:1.2.1")
+        modRuntimeOnly("curse.maven:real-camera-851574:7082366")
+        modRuntimeOnly("net.darkhax.bookshelf:Bookshelf-Forge-${minecraft_version}:${bookshelf_version}")
+        modRuntimeOnly("net.darkhax.enchdesc:EnchantmentDescriptions-Forge-${minecraft_version}:${enchdesc_version}")
+    }
+    onlyInServer {
+        modRuntimeOnly("curse.maven:spark-361579:4738952")
+    }
+    modImplementation('curse.maven:touhou-little-maid-355044:6613821-sources-6613853')
+    modRuntimeOnly("curse.maven:ride-every-thing-1132190:6968358")
+    modImplementation("curse.maven:emotecraft-forge-403422:4632460")
+    modImplementation("blank:curtain-1.20.1:1.3.2")
+    modRuntimeOnly("curse.maven:debug-utils-forge-783008:5337491")
+    modRuntimeOnly("curse.maven:powerful-dummy-1276893:6956104")
+    modImplementation("blank:carryon-1.20.1:2.1.2.7")
+    modCompileOnly("dev.emi:emi-forge:${emi_version}:api")
+    modImplementation("dev.emi:emi-forge:${emi_version}")
+    modCompileOnly("mezz.jei:jei-${minecraft_version}-forge-api:${jei_version}")
+    modCompileOnly("mezz.jei:jei-${minecraft_version}-common-api:${jei_version}")
+    modRuntimeOnly("mezz.jei:jei-${minecraft_version}-forge:${jei_version}")
+    modImplementation("top.r3944realms.superleadrope:superleadrope:${super_lead_version}")
+    modImplementation("dev.kosmx.player-anim:player-animation-lib-forge:${player_anim_version}")
+    modImplementation("curse.maven:bendy-lib-623373:4550371")
+    modImplementation("software.bernie.geckolib:geckolib-forge-${minecraft_version}:${geckolib_version}")
+    implementation(jarJar("com.eliotlash.mclib:mclib:20"))
+    modCompileOnly("top.theillusivec4.curios:curios-forge:${curios_version}:api")
+    modImplementation("top.theillusivec4.curios:curios-forge:${curios_version}")
+    implementation(annotationProcessor("io.github.llamalad7:mixinextras-common:0.4.1"))
+    modImplementation(jarJar("io.github.llamalad7:mixinextras-forge:0.4.1"))
+    compileOnly ('me.lucko:spark-api:0.1-SNAPSHOT')
+    modImplementation("top.r3944realms.lib39:lib39-forge-1.20.1:${lib39_version}")
+    implementation("io.zershyan:sccore:1.20.1-1.0.0")
+    modImplementation(jarJar("top.leisuiretimedock.animationcore:animcore:${accore_version}"))
+}
+mixin {
+    add sourceSets.main, "${mod_id}.refmap.json"
+    config "${mod_id}.mixins.json"
+}
+dependencies {
+    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
+}
+
+
+// ===================== 主 Jar 与混淆 =====================
+jar {
+    manifest {
+        attributes([
+                'Specification-Title'     : mod_id,
+                'Specification-Vendor'    : mod_authors,
+                'Specification-Version'   : '1',
+                'Implementation-Title'    : project.name,
+                'Implementation-Version'  : archiveVersion,
+                'Implementation-Vendor'   : mod_authors,
+                'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"),
+                'MixinConfigs'            : "${mod_id}.mixins.json"
+        ])
+    }
+    archiveFileName = "${mod_id}-${mod_version}-origin.jar"
+
+    finalizedBy 'proguard'
+}
+
+tasks.register('proguard', ProGuardTask) {
+    onlyIf { enableProguard }
+    dependsOn tasks.jar
+    configuration 'proguard.pro'
+
+    libraryjars "${System.getProperty('java.home')}/jmods"
+    configurations.proguardLibs.resolve().each { file ->
+        libraryjars file.absolutePath
+    }
+
+    def inputJar = tasks.jar.archiveFile.get().asFile
+    injars inputJar
+    outjars "${buildDir}/libs/[NOTUSE]${mod_id}-${minecraft_version}-${mod_version}-proguard.jar"
+
+    doFirst {
+        copy {
+            from inputJar
+            into "${buildDir}/libs"
+            rename { "[NOTUSE]${mod_id}-${minecraft_version}-${mod_version}-origin.jar" }
+        }
+    }
+
+    inputs.files tasks.jar.archiveFile
+    finalizedBy 'reobfJar'
+}
+processResources {
+    def props = [
+            minecraft_version           : minecraft_version,
+            minecraft_version_range     : minecraft_version_range,
+            forge_version               : forge_version,
+            forge_version_range         : forge_version_range,
+            loader_version_range    : loader_version_range,
+            mod_id                  : mod_id,
+            mod_name                : mod_name,
+            mod_license             : mod_license,
+            mod_version             : mod_version,
+            mod_authors             : mod_authors,
+            mod_description         : mod_description,
+            mod_credits             : mod_credits,
+            lib39_version           : lib39_version,
+            player_animation_version: player_anim_version,
+            accore_version          : accore_version,
+            geckolib_version        : geckolib_version,
+            curios_version          : curios_version
+    ]
+    inputs.properties props
+    from "src/main/templates"
+    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
+        expand props + [project: project]
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    into "build/generated/sources/modMetadata"
+}
+
+// ===================== 修复 Javadoc 任务 =====================
+tasks.named('javadoc', Javadoc).configure {
+    group = 'documentation'
+    description = 'Generates full Javadoc for the mod.'
+    destinationDir = file("$buildDir/docs/javadoc")
+
+    // 明确指定源与类路径
+    source = sourceSets.main.allJava
+    classpath = sourceSets.main.compileClasspath
+
+    options.encoding = 'UTF-8'
+    options.charSet = 'UTF-8'
+    options.links("https://docs.oracle.com/en/java/javase/17/docs/api/")
+    options.memberLevel = JavadocMemberLevel.PUBLIC
+    options.addBooleanOption('Xdoclint:none', true)
+    options.addStringOption('doctitle', "${mod_id} ${minecraft_version} ${mod_version} Javadoc")
+}
+tasks.register('sourceJar', Jar) {
+    from(sourceSets.main.allSource) // java
+    archiveFileName = "${mod_id}-${minecraft_version}-${mod_version}-sources.jar"
+    archiveClassifier.set("sources")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes([
+                'Specification-Title'     : mod_id,
+                'Specification-Vendor'    : mod_authors,
+                'Specification-Version'   : '1',
+                'Implementation-Title'    : project.name,
+                'Implementation-Version'  : archiveVersion,
+                'Implementation-Vendor'   : mod_authors,
+                'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"),
+        ])
+    }
+    dependsOn classes
+}
+// ===================== 普通 Javadoc =====================
+tasks.register('javadocJar', Jar) {
+    archiveFileName = "${mod_id}-${minecraft_version}-${mod_version}-javadoc.jar"
+    archiveClassifier.set("javadoc")
+    from tasks.javadoc
+    dependsOn tasks.javadoc
+}
+
+// ===================== API Jar（class / java） =====================
+tasks.register('apiJar', Jar) {
+    archiveFileName = "${mod_id}-${minecraft_version}-${mod_version}-api.jar"
+    archiveClassifier.set("api")
+    manifest {
+        attributes 'FMLModType': 'GAMELIBRARY'
+    }
+
+    // 打包 class 和 java
+    from(sourceSets.main.output) { // class
+        exclude 'assets/**', 'data/**'
+    }
+
+    include "top/r3944realms/eroticdungeongame/api/**/*"
+    include "top/r3944realms/eroticdungeongame/api/EroticDungeonGameApi.*"
+
+    dependsOn classes
+}
+tasks.register('apiSourceJar', Jar) {
+    archiveFileName = "${mod_id}-${minecraft_version}-${mod_version}-api-sources.jar"
+    archiveClassifier.set("api-sources")
+    manifest {
+        attributes 'FMLModType': 'GAMELIBRARY'
+    }
+
+    // 打包 class 和 java
+    from(sourceSets.main.allSource) { // java
+        exclude 'assets/**', 'data/**'
+    }
+
+    include "top/r3944realms/eroticdungeongame/api/**/*"
+    include "top/r3944realms/eroticdungeongame/api/EroticDungeonGameApi.*"
+
+    dependsOn classes
+}
+
+tasks.register('apiJavadocJar', Jar) {
+    archiveFileName = "${mod_id}-${minecraft_version}-${mod_version}-api-javadoc.jar"
+    archiveClassifier.set("api-javadoc")
+    from tasks.javadoc
+    include "top/r3944realms/superleadrope/api/**/*"
+    dependsOn tasks.javadoc
+}
+
+tasks.register('apiJavadoc', Javadoc) {
+    group = 'documentation'
+    description = 'Generates Javadoc for API package only.'
+    destinationDir = file("$buildDir/docs/api-javadoc")
+
+    source = sourceSets.main.allJava.matching {
+        include "top/r3944realms/eroticdungeongame/api/**/*"
+        include "top/r3944realms/eroticdungeongame/api/EroticDungeonGameApi.java"
+    }
+    classpath = sourceSets.main.compileClasspath
+    options.encoding = 'UTF-8'
+    options.charSet = 'UTF-8'
+    options.links("https://docs.oracle.com/en/java/javase/17/docs/api/")
+    options.memberLevel = JavadocMemberLevel.PUBLIC
+    options.addBooleanOption('Xdoclint:none', true)
+    options.addStringOption('doctitle', "${mod_name} API ${mod_version} Javadoc")
+}
+
+// ===================== 许可证配置 =====================
+def licensesDir = file("LICENSES")
+
+// 创建任务将许可证文件复制到资源目录
+tasks.register("copyLicensesToResources", Copy) {
+    from licensesDir
+    into "${buildDir}/resources/main/META-INF/licenses"
+    include "**/*.txt"
+    include "**/*.md"
+    include "**/*.html"
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+}
+
+// 确保在processResources之前运行
+processResources.dependsOn copyLicensesToResources
+
+afterEvaluate {
+    tasks.named('reobfJar') {
+        if (enableProguard) {
+            dependsOn 'proguard'
+            input = file("${buildDir}/libs/[NOTUSE]${mod_id}-${minecraft_version}-${mod_version}-proguard.jar")
+        } else {
+            dependsOn 'jar'
+            input = tasks.jar.archiveFile.get().asFile
+        }
+    }
+}
+tasks.named('publish') {
+    dependsOn build
+}
+// ===================== 发布配置 =====================
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            artifactId = mod_id
+
+            artifact reobfJar
+            artifact sourceJar
+            artifact javadocJar
+            artifact apiJar
+            artifact apiSourceJar
+            artifact apiJavadocJar
+
+            pom {
+                name = "${mod_id}"
+                description = "The API for ${mod_name}"
+                url = "https://github.com/3944Realms/EroticDungeonGame"
+
+                // 许可证配置 - 双重许可证
+                licenses {
+                    // Apache 2.0 许可证 - 代码部分
+                    license {
+                        name = 'Apache License 2.0'
+                        url = 'https://www.apache.org/licenses/LICENSE-2.0.html'
+                        distribution = 'repo'
+                        comments = '''
+                            Applies to:
+                            - All Java source code (*.java)
+                            - Kotlin source code (*.kt)
+                            - Configuration files (*.json, *.toml, *.properties)
+                            - Build scripts (build.gradle, gradle.properties)
+                            - Documentation files (*.md)
+                            
+                            You may:
+                            1. Use the software for any purpose
+                            2. Modify and distribute the software
+                            3. Sublicense the software
+                            4. Patent grant included
+                            
+                            Conditions:
+                            1. Include the original license and copyright notice
+                            2. State significant changes made
+                            3. Do not use trademarks without permission
+                        '''
+                    }
+
+                    // CC BY-NC-SA 4.0 - 美术资源部分
+                    license {
+                        name = 'Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International'
+                        url = 'https://creativecommons.org/licenses/by-nc-sa/4.0/'
+                        distribution = 'repo'
+                        comments = '''
+                            Applies to:
+                            - All graphical assets in /assets/ directory
+                            - Textures and images (*.png, *.jpg)
+                            - 3D models (*.obj, *.fbx)
+                            - Audio files (*.ogg, *.mp3)
+                            - Animations
+                            - UI graphics and icons
+                            
+                            You may:
+                            1. Share — copy and redistribute the material
+                            2. Adapt — remix, transform, and build upon the material
+                            
+                            Under the following terms:
+                            1. Attribution — You must give appropriate credit
+                            2. NonCommercial — You may not use the material for commercial purposes
+                            3. ShareAlike — If you remix, you must license under identical terms
+                            4. No additional restrictions — You may not apply legal terms or technological measures
+                        '''
+                    }
+                }
+
+                // 开发者信息
+                developers {
+                    developer {
+                        id = "${mod_id}"
+                        name = mod_authors
+                        email = 'f256198830@hotmail.com'
+                        organization = '3944Realms'
+                        organizationUrl = 'https://github.com/3944Realms'
+                    }
+                }
+
+                // SCM 信息
+                scm {
+                    connection = 'scm:git:git://github.com/3944Realms/EroticDungeonGame.git'
+                    developerConnection = 'scm:git:ssh://github.com/3944Realms/EroticDungeonGame.git'
+                    url = 'https://github.com/3944Realms/EroticDungeonGame'
+                    tag = 'HEAD'
+                }
+
+                // 问题追踪
+                issueManagement {
+                    system = 'GitHub Issues'
+                    url = 'https://github.com/3944Realms/EroticDungeonGame/issues'
+                }
+            }
+        }
+    }
+
+    repositories {
+        maven {
+            name = "local"
+            url = layout.buildDirectory.dir("repo")
+        }
+        maven {
+            name = 'LTDNexus'
+            url = 'https://nexus.bot.leisuretimedock.top/repository/maven-releases/'
+            credentials {
+                username = System.getenv('LTDNexusUsername') ?: ''
+                password = System.getenv('LTDNexusPassword') ?: ''
+            }
+        }
+    }
+}
+
+tasks.named('clean') {
+    delete fileTree(dir: "${project.projectDir}/mcmodsrepo")
+}
+
+
+// ===================== IDEA 支持 =====================
+idea {
+    module {
+        downloadSources = true
+        downloadJavadoc = true
+    }
+}
