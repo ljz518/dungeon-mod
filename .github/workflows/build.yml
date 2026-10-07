@@ -1,4 +1,4 @@
-name: Build Mod
+name: Build Forge1.20.1 Mod
 on:
   push:
   pull_request:
@@ -16,17 +16,20 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Install system Gradle
-        run: apt update && apt install -y gradle
+      # 安装Gradle 7.5.1，Forge1.20.1唯一支持版本
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '7.5.1'
 
-      # 全局gradle生成wrapper，不需要项目自带wrapper.jar
-      - name: Generate wrapper
-        run: gradle wrapper --gradle-version=8.14.3
+      # 用全局gradle7.5.1生成项目wrapper，版本匹配Forge1.20.1
+      - name: Generate Gradle Wrapper
+        run: gradle wrapper --gradle-version=7.5.1
 
-      - name: chmod gradlew
+      - name: Make gradlew executable
         run: chmod +x gradlew
 
-      # 阿里云Maven镜像
+      # Maven镜像加速
       - name: Gradle mirror
         run: |
           mkdir -p ~/.gradle
@@ -34,15 +37,16 @@ jobs:
 allprojects {
     repositories {
         maven { url 'https://maven.aliyun.com/repository/public' }
+        maven { url 'https://maven.aliyun.com/repository/minecraftforge' }
         mavenCentral()
     }
 }
 EOF
 
-      - name: genSources
+      - name: Run genSources
         run: ./gradlew genSources
 
-      - name: build jar
+      - name: Build Jar
         run: ./gradlew jar
 
       - name: Upload artifact
