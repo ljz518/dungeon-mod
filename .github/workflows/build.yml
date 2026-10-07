@@ -1,0 +1,33 @@
+name: Build Mod
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Gradle国内镜像加速
+        run: |
+          mkdir -p ~/.gradle
+          echo "allprojects{repositories{maven{url 'https://maven.aliyun.com/repository/public'}mavenCentral()}}" > ~/.gradle/init.gradle
+
+      - name: Run genSources
+        run: ./gradlew genSources
+      - name: Build Mod Jar
+        run: ./gradlew build
+
+      - name: Upload compiled jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: ModJar
+          path: build/libs/*.jar
