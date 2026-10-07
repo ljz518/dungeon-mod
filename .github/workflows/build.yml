@@ -27,19 +27,6 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
-      - name: Gradle mirror
-        run: |
-          mkdir -p ~/.gradle
-          cat > ~/.gradle/init.gradle <<'EOF'
-allprojects {
-    repositories {
-        maven { url 'https://maven.aliyun.com/repository/public' }
-        maven { url 'https://maven.aliyun.com/repository/minecraftforge' }
-        mavenCentral()
-    }
-}
-EOF
-
       - name: Run genSources
         run: ./gradlew genSources --no-daemon
 
@@ -51,4 +38,5 @@ EOF
         with:
           name: ModJar
           path: build/libs/*.jar
+
 
