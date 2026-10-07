@@ -1,5 +1,4 @@
-name: Build Forge1.20.1 Mod
-
+name: Build Dungeon Mod
 on:
   push:
     branches: [ main ]
@@ -10,10 +9,10 @@ permissions:
   contents: read
 
 jobs:
-  gen-wrapper:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout source
         uses: actions/checkout@v4
 
       - name: Setup JDK 17
@@ -22,55 +21,49 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Install Gradle 8.8
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.8'
-
-      - name: Generate Wrapper
-        run: gradle wrapper --gradle-version=8.8
-
-      - name: Archive generated project
-        uses: actions/upload-artifact@v4
-        with:
-          name: project-with-wrapper
-          path: ./
-
-  build-mod:
-    needs: gen-wrapper
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download project with wrapper
-        uses: actions/download-artifact@v4
-        with:
-          name: project-with-wrapper
-          path: ./
-
-      - name: Setup JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
+      - name: 生成Gradle全局镜像脚本（不修改build.gradle）
+        run: |
+          cat > ~/.gradle/init.gradle <<'EOF'
+          allprojects {
+              repositories {
+                  def aliyunPublic = maven { url "https://maven.aliyun.com/repository/public" }
+                  def aliyunPlugin = maven { url "https://maven.aliyun.com/repository/gradle-plugin" }
+                  def neoMaven = maven { url "https://maven.neoforged.net" }
+                  mavenCentral()
+                  // 把阿里云放最前面优先访问
+                  removeAll(repositories)
+                  repositories {
+                      aliyunPublic
+                      aliyunPlugin
+                      mavenCentral()
+                      neoMaven
+                  }
+              }
+          }
+          EOF
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
 
-      - name: Make gradlew executable
+      - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build
+      - name: Build Mod
         run: ./gradlew build --stacktrace
+        env:
+          GRADLE_OPTS: "-Dhttp.connectionTimeout=45000 -Dhttp.readTimeout=90000"
 
-      - name: Clean auxiliary jars
+      - name: Remove source & javadoc jars
         run: |
           rm -f build/libs/*-sources.jar
           rm -f build/libs/*-javadoc.jar
 
-      - name: Upload Mod Jar
+      - name: Upload mod jar
         uses: actions/upload-artifact@v4
         with:
-          name: ModJar
+          name: Dungeon-Mod
           path: build/libs/*.jar
+
 
