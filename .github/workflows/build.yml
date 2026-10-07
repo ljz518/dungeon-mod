@@ -16,6 +16,10 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      # 关键修复：给gradlew添加执行权限，解决exit code126
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
       - name: 写入gradle国内镜像配置
         run: |
           mkdir -p ~/.gradle
